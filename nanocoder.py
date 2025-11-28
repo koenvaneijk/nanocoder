@@ -38,7 +38,6 @@ def get_map(root):
     return "\n".join(out)
 
 def colorize_tags(text):
-    """Colorize XML tags: shell_command in cyan, others in yellow, both with black text."""
     result = []
     i = 0
     while i < len(text):
