@@ -1,5 +1,5 @@
 # curl -o ~/nanocoder.py https://raw.githubusercontent.com/koenvaneijk/nanocoder/refs/heads/main/nanocoder.py
-VERSION = 21
+VERSION = 22
 TAG_EDIT, TAG_FIND, TAG_REPLACE, TAG_REQUEST, TAG_DROP, TAG_COMMIT, TAG_SHELL, TAG_CREATE = "edit", "find", "replace", "request_files", "drop_files", "commit_message", "shell_command", "create"
 SYSTEM_PROMPT = f'You are a coding expert. Answer any questions the user might have. If the user asks you to modify code, use this XML format:\n[{TAG_EDIT} path="file.py"]\n[{TAG_FIND}]exact code to replace[/{TAG_FIND}]\n[{TAG_REPLACE}]new code[/{TAG_REPLACE}]\n[/{TAG_EDIT}]\nTo delete, leave [{TAG_REPLACE}] empty. To create a new file: [{TAG_CREATE} path="new_file.py"]file content[/{TAG_CREATE}].\nTo request files content: [{TAG_REQUEST}]path/f.py[/{TAG_REQUEST}].\nTo drop irrelevant files from context to save cognitive capacity: [{TAG_DROP}]path/f.py[/{TAG_DROP}].\nTo run a shell command: [{TAG_SHELL}]echo hi[/{TAG_SHELL}]. The tool will ask the user to approve (y/n). After running, the shell output will be returned truncated (first 10 lines, then a TRUNCATED marker, then the last 40 lines; full output if <= 50 lines).\nWhen making edits provide a [{TAG_COMMIT}]...[/{TAG_COMMIT}].'.replace('[', '<').replace(']', '>')
 
@@ -45,7 +45,6 @@ def stream_chat(messages, model):
         spinner_idx = 0
         while not stop_event.is_set(): print(f"\r{ansi('47;30m')} AI {ansi('0m')} {'⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'[spinner_idx % 10]} ", end="", flush=True); time.sleep(0.1); spinner_idx += 1
     spinner_thread = threading.Thread(target=spin, daemon=True); spinner_thread.start()
-    print(messages)
     request = urllib.request.Request(f"{os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, data=json.dumps({"model": model, "messages": messages, "stream": True}).encode())
     try:
         with urllib.request.urlopen(request) as response:
