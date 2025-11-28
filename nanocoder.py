@@ -45,6 +45,7 @@ def stream_chat(messages, model):
         spinner_idx = 0
         while not stop_event.is_set(): print(f"\r{ansi('47;30m')} AI {ansi('0m')} {'⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'[spinner_idx % 10]} ", end="", flush=True); time.sleep(0.1); spinner_idx += 1
     spinner_thread = threading.Thread(target=spin, daemon=True); spinner_thread.start()
+    print(messages)
     request = urllib.request.Request(f"{os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, data=json.dumps({"model": model, "messages": messages, "stream": True}).encode())
     try:
         with urllib.request.urlopen(request) as response:
@@ -147,11 +148,17 @@ def main():
             context = f"### Repo Map\n{get_map(repo_root)}\n### Files\n" + "\n".join([f"File: {filepath}\n```\n{Path(repo_root,filepath).read_text()}\n```" for filepath in context_files if Path(repo_root,filepath).exists()])
             messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "system", "content": f"System summary: {json.dumps(system_summary(), separators=(',',':'))}"}] + history + [{"role": "user", "content": f"{context}\nRequest: {request}"}]
             full_response = stream_chat(messages, model); history.extend([{"role": "user", "content": request}, {"role": "assistant", "content": full_response}]); apply_edits(full_response, repo_root)
-            file_requests = re.findall(rf'<({TAG_REQUEST}|{TAG_DROP})>(.*?)</\1>', full_response)
-            added_files = [filepath.strip() for tag, filepath in file_requests if tag == TAG_REQUEST and filepath.strip() not in context_files and Path(repo_root, filepath.strip()).exists()]
+            file_requests = re.findall(rf'<({TAG_REQUEST}|{TAG_DROP})>(.*?)</\1>', full_response, re.DOTALL)
+            added_files = []
+            for tag, content in file_requests:
+                for filepath in content.strip().split('\n'):
+                    filepath = filepath.strip()
+                    if not filepath: continue
+                    if tag == TAG_REQUEST and filepath not in context_files and Path(repo_root, filepath).exists():
+                        added_files.append(filepath)
+                    elif tag == TAG_DROP:
+                        context_files.discard(filepath)
             context_files.update(added_files)
-            for tag, filepath in file_requests:
-                if tag == TAG_DROP: context_files.discard(filepath.strip())
             if added_files: print(f"{ansi('93m')}+{len(added_files)} file(s){ansi('0m')}"); request = f"Added files: {', '.join(added_files)}. Please continue."; continue
             shell_commands = re.findall(rf'<{TAG_SHELL}>(.*?)</{TAG_SHELL}>', full_response, re.DOTALL)
             if shell_commands:
