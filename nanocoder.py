@@ -101,7 +101,6 @@ def stream_chat(msgs, model):
                             # Incomplete tag - print text before '<', keep rest in buffer
                             if lt > 0: print(buf[:lt], end="", flush=True); buf = buf[lt:]
                             break
-                        # Complete tag found - print up to and including tag
                         print(buf[:lt], end="", flush=True)
                         tag = buf[lt:gt+1]
                         color = get_tag_color(tag)
