@@ -96,14 +96,31 @@ def main():
             if cmd == "/add": found = [f for f in glob.glob(arg, root_dir=root, recursive=True) if Path(root, f).is_file()]; ctx.update(found); print(f"Added {len(found)} files")
             elif cmd == "/drop": ctx.discard(arg)
             elif cmd == "/clear": hist = []; print("History cleared.")
-            elif cmd == "/diff": print(run("git diff --cached") or "No changes")
             elif cmd == "/undo": run("git reset --soft HEAD~1")
             elif cmd == "/exit": print("Bye!"); break
-            elif cmd == "/refresh": system_summary(refresh=True); print("System summary refreshed.")
-            elif cmd == "/help": print("/add <glob> - Add files to context\n/drop <file> - Remove file from context\n/clear - Clear conversation history\n/diff - Show staged git changes\n/undo - Undo last commit\n/refresh - Refresh system summary\n/update - Update nanocoder\n/exit - Exit")
+            elif cmd == "/help": print("/add <glob> - Add files to context\n/drop <file> - Remove file from context\n/clear - Clear conversation history\n/undo - Undo last commit\n/update - Update nanocoder\n/exit - Exit\n!<cmd> - Run shell command")
             elif cmd == "/update":
                 try: curr, remote = Path(__file__).read_text(), urllib.request.urlopen("https://raw.githubusercontent.com/koenvaneijk/nanocoder/refs/heads/main/nanocoder.py").read().decode(); curr != remote and (Path(__file__).write_text(remote), print("Updated! Restarting..."), os.execv(sys.executable, [sys.executable] + sys.argv))
                 except: print("Update failed")
+            continue
+
+        if txt.startswith("!"):
+            shell_cmd = txt[1:].strip()
+            if shell_cmd:
+                out_lines, pr = [], subprocess.Popen(shell_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                try:
+                    for line in pr.stdout: print(line, end="", flush=True); out_lines.append(line.rstrip('\n'))
+                    pr.wait()
+                except KeyboardInterrupt: pr.terminate(); pr.wait(timeout=2); out_lines.append("[INTERRUPTED]"); print("\n[INTERRUPTED]")
+                print(f"\n{c('90m')}exit={pr.returncode}{c('0m')}")
+                ans = ""
+                while ans not in ("t", "f", "n"):
+                    try: ans = input("Add to context? [t]runcated/[f]ull/[n]o: ").strip().lower()
+                    except EOFError: ans = "n"
+                if ans in ("t", "f"):
+                    output = "\n".join(out_lines[:10] + ["[TRUNCATED]"] + out_lines[-40:]) if ans == "t" and len(out_lines) > 50 else "\n".join(out_lines)
+                    hist.append({"role": "user", "content": f"Shell command output:\n$ {shell_cmd}\nexit={pr.returncode}\n{output}"})
+                    print(f"{c('93m')}Added to context{c('0m')}")
             continue
 
         req = txt
