@@ -37,23 +37,76 @@ def get_map(root):
         except: pass
     return "\n".join(out)
 
+def colorize_tags(text):
+    """Colorize XML tags: shell_command in cyan, others in yellow, both with black text."""
+    result = []
+    i = 0
+    while i < len(text):
+        if text[i] == '<':
+            end = text.find('>', i)
+            if end != -1:
+                tag = text[i:end+1]
+                if SC in tag:
+                    result.append(f"{c('46;30m')}{tag}{c('0m')}")  # cyan bg, black text
+                elif any(t in tag for t in [TE, TF, TR, TRQ, TDR, TCM, TC]):
+                    result.append(f"{c('43;30m')}{tag}{c('0m')}")  # yellow bg, black text
+                else:
+                    result.append(tag)
+                i = end + 1
+            else:
+                result.append(text[i])
+                i += 1
+        else:
+            result.append(text[i])
+            i += 1
+    return ''.join(result)
+
 def stream_chat(msgs, model):
     api_key = env("OPENAI_API_KEY")
     if not api_key: return print(f"{c('31m')}Err: Missing OPENAI_API_KEY{c('0m')}")
-    stop, full = threading.Event(), ""
+    stop, full, buf = threading.Event(), "", ""
     def spin():
         i = 0
         while not stop.is_set(): print(f"\r{c('47;30m')} AI {c('0m')} {'⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'[i % 10]} ", end="", flush=True); time.sleep(0.1); i += 1
     t = threading.Thread(target=spin, daemon=True); t.start()
     req = urllib.request.Request(f"{env('OPENAI_BASE_URL', 'https://api.openai.com/v1')}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "User-Agent": f"nanocoder v{VERSION}"}, data=json.dumps({"model": model, "messages": msgs, "stream": True}).encode())
+    def flush_buf():
+        nonlocal buf
+        if buf:
+            print(colorize_tags(buf), end="", flush=True)
+            buf = ""
     try:
         with urllib.request.urlopen(req) as r:
             started = False
             for line in r:
                 if not line.startswith(b"data: "): continue
                 if not started: stop.set(); t.join(); print(f"\r{c('47;30m')} AI {c('0m')} ", end="", flush=True); started = True
-                try: chunk = json.loads(line[6:])["choices"][0]["delta"].get("content", ""); full += chunk; print(chunk, end="", flush=True)
+                try:
+                    chunk = json.loads(line[6:])["choices"][0]["delta"].get("content", "")
+                    full += chunk
+                    buf += chunk
+                    # Process complete parts, keep incomplete tag in buffer
+                    while True:
+                        lt = buf.find('<')
+                        if lt == -1:
+                            print(buf, end="", flush=True); buf = ""; break
+                        gt = buf.find('>', lt)
+                        if gt == -1:
+                            # Incomplete tag - print text before '<', keep rest in buffer
+                            if lt > 0: print(buf[:lt], end="", flush=True); buf = buf[lt:]
+                            break
+                        # Complete tag found - print up to and including tag
+                        print(buf[:lt], end="", flush=True)
+                        tag = buf[lt:gt+1]
+                        if SC in tag:
+                            print(f"{c('46;30m')}{tag}{c('0m')}", end="", flush=True)
+                        elif any(t in tag for t in [TE, TF, TR, TRQ, TDR, TCM, TC]):
+                            print(f"{c('43;30m')}{tag}{c('0m')}", end="", flush=True)
+                        else:
+                            print(tag, end="", flush=True)
+                        buf = buf[gt+1:]
                 except: pass
+            flush_buf()
     except urllib.error.HTTPError as e: stop.set(); t.join(); print(f"\n{c('31m')}HTTP {e.code}: {e.reason}\nURL: {req.full_url}\nResponse: {e.read().decode() if e.fp else ''}{c('0m')}")
     except Exception as e: stop.set(); t.join(); import traceback; print(f"\n{c('31m')}Err: {e}\n{traceback.format_exc()}{c('0m')}")
     print("\n"); return full
