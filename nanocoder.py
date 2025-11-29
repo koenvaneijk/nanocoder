@@ -35,6 +35,28 @@ def get_map(root):
 
 TAG_COLORS = {TAGS["shell"]: '46;30m', TAGS["find"]: '41;37m', TAGS["replace"]: '42;30m', TAGS["commit"]: '44;37m', TAGS["request"]: '45;37m', TAGS["drop"]: '45;37m', TAGS["edit"]: '43;30m', TAGS["create"]: '43;30m'}
 def get_tag_color(tag): return next((c for t, c in TAG_COLORS.items() if t in tag), None)
+
+def render_md(text):
+    """Render markdown: bold, inline code, headers. Preserves code blocks with grey background."""
+    parts = re.split(r'(```[\s\S]*?```|`[^`\n]+`)', text)
+    result = []
+    for part in parts:
+        if part.startswith('```') and part.endswith('```'):
+            # Fenced code block: grey background, white text
+            inner = part[3:-3]
+            if inner.startswith('\n'): inner = inner[1:]
+            elif '\n' in inner: inner = inner.split('\n', 1)[1]  # remove language hint line
+            result.append(f"{ansi('48;5;236;37m')}{inner}{ansi('0m')}")
+        elif part.startswith('`') and part.endswith('`'):
+            # Inline code: grey background
+            result.append(f"{ansi('48;5;236m')}{part[1:-1]}{ansi('0m')}")
+        else:
+            # Bold
+            part = re.sub(r'\*\*(.+?)\*\*', lambda m: f"{ansi('1m')}{m.group(1)}{ansi('22m')}", part)
+            # Headers (only at line start)
+            part = re.sub(r'^(#{1,3}) (.+)$', lambda m: f"{ansi('1;33m')}{m.group(2)}{ansi('0m')}", part, flags=re.MULTILINE)
+            result.append(part)
+    return ''.join(result)
 def truncate(lines, n=50): return lines if len(lines) <= n else lines[:10] + ["[TRUNCATED]"] + lines[-40:]
 def run_shell_interactive(cmd):
     output_lines, process = [], subprocess.Popen(cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -47,10 +69,14 @@ def run_shell_interactive(cmd):
 def stream_chat(messages, model):
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key: return print(f"{ansi('31m')}Err: Missing OPENAI_API_KEY{ansi('0m')}")
-    stop_event, full_response, buffer = threading.Event(), "", ""
+    stop_event, full_response, buffer, md_buffer = threading.Event(), "", "", ""
+    in_xml_tag, in_code_fence = False, False
     def spin():
         spinner_idx = 0
         while not stop_event.is_set(): print(f"\r{ansi('47;30m')} AI {ansi('0m')} {'⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'[spinner_idx % 10]} ", end="", flush=True); time.sleep(0.1); spinner_idx += 1
+    def flush_md():
+        nonlocal md_buffer
+        if md_buffer: print(render_md(md_buffer), end="", flush=True); md_buffer = ""
     spinner_thread = threading.Thread(target=spin, daemon=True); spinner_thread.start()
     request = urllib.request.Request(f"{os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, data=json.dumps({"model": model, "messages": messages, "stream": True}).encode())
     try:
@@ -62,21 +88,74 @@ def stream_chat(messages, model):
                 try:
                     chunk = json.loads(line[6:])["choices"][0]["delta"].get("content", "")
                     full_response += chunk; buffer += chunk
-                    tag_pattern = re.compile(r'<(/?(?:' + '|'.join(TAGS.values()) + r'))(?:\s[^>]*)?>') 
-                    while True:
-                        match = tag_pattern.search(buffer)
-                        if match:
-                            print(buffer[:match.start()], end="", flush=True); tag = match.group(0); color = get_tag_color(tag)
-                            print(f"{ansi(color)}{tag}{ansi('0m')}" if color else tag, end="", flush=True); buffer = buffer[match.end():]
-                        else:
-                            lt_pos = buffer.rfind('<')
-                            if lt_pos != -1:
-                                print(buffer[:lt_pos], end="", flush=True); buffer = buffer[lt_pos:]
+                    tag_pattern = re.compile(r'<(/?(?:' + '|'.join(TAGS.values()) + r'))(?:\s[^>]*)?>')
+                    while buffer:
+                        # Check for code fence toggle (``` at line start or after newline)
+                        fence_match = re.match(r'^(```[^\n]*\n?)', buffer) if not in_xml_tag else None
+                        if not fence_match and not in_xml_tag:
+                            fence_pos = buffer.find('\n```')
+                            if fence_pos != -1: fence_match = re.match(r'^(\n```[^\n]*\n?)', buffer[fence_pos:])
+                        if fence_match and not in_xml_tag:
+                            fence_pos = buffer.find(fence_match.group(0))
+                            # Text before fence goes to md_buffer
+                            md_buffer += buffer[:fence_pos]
+                            if not in_code_fence: flush_md()  # Flush markdown before entering code block
+                            in_code_fence = not in_code_fence
+                            fence_text = fence_match.group(0)
+                            if in_code_fence:
+                                print(f"{ansi('48;5;236;37m')}", end="", flush=True)  # Start grey background
                             else:
+                                print(f"{ansi('0m')}", end="", flush=True)  # End grey background
+                            buffer = buffer[fence_pos + len(fence_text):]
+                            continue
+                        # Check for XML tag
+                        match = tag_pattern.search(buffer)
+                        if match and not in_code_fence:
+                            before_tag = buffer[:match.start()]
+                            if in_xml_tag:
+                                print(before_tag, end="", flush=True)  # Raw output inside XML tags
+                            else:
+                                md_buffer += before_tag
+                                flush_md()  # Flush markdown before tag
+                            tag = match.group(0); color = get_tag_color(tag)
+                            print(f"{ansi(color)}{tag}{ansi('0m')}" if color else tag, end="", flush=True)
+                            # Track if we're entering or leaving an XML tag
+                            if tag.startswith('</'): in_xml_tag = False
+                            else: in_xml_tag = True
+                            buffer = buffer[match.end():]
+                        else:
+                            # No complete tag found yet
+                            lt_pos = buffer.rfind('<') if not in_code_fence else -1
+                            if lt_pos != -1 and not in_xml_tag:
+                                # Potential incomplete tag, buffer it
+                                md_buffer += buffer[:lt_pos]
+                                # Flush on paragraph boundary if not in code fence
+                                if '\n\n' in md_buffer:
+                                    parts = md_buffer.rsplit('\n\n', 1)
+                                    md_buffer = parts[0] + '\n\n'
+                                    flush_md()
+                                    md_buffer = parts[1] if len(parts) > 1 else ""
+                                buffer = buffer[lt_pos:]
+                            elif in_xml_tag or in_code_fence:
+                                # Inside tag or code fence: print raw
                                 print(buffer, end="", flush=True); buffer = ""
+                            else:
+                                # Outside tag: accumulate for markdown
+                                md_buffer += buffer
+                                # Flush on paragraph boundary
+                                if '\n\n' in md_buffer:
+                                    parts = md_buffer.rsplit('\n\n', 1)
+                                    md_buffer = parts[0] + '\n\n'
+                                    flush_md()
+                                    md_buffer = parts[1] if len(parts) > 1 else ""
+                                buffer = ""
                             break
                 except: pass
-            if buffer: print(buffer, end="", flush=True)
+            if buffer: 
+                if in_xml_tag or in_code_fence: print(buffer, end="", flush=True)
+                else: md_buffer += buffer
+            flush_md()
+            if in_code_fence: print(f"{ansi('0m')}", end="", flush=True)  # Reset if stream ended in code block
     except urllib.error.HTTPError as err: stop_event.set(); spinner_thread.join(); print(f"\n{ansi('31m')}HTTP {err.code}: {err.reason}{ansi('0m')}")
     except Exception as err: stop_event.set(); spinner_thread.join(); print(f"\n{ansi('31m')}Err: {err}{ansi('0m')}")
     print("\n"); return full_response
