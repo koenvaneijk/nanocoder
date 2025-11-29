@@ -46,7 +46,7 @@ def render_md(text):
             inner = part[3:-3]
             if inner.startswith('\n'): inner = inner[1:]
             elif '\n' in inner: inner = inner.split('\n', 1)[1]  # remove language hint line
-            result.append(f"{ansi('48;5;236;37m')}{inner}{ansi('0m')}")
+            result.append(f"\n{ansi('48;5;236;37m')}{inner}{ansi('0m')}")
         elif part.startswith('`') and part.endswith('`'):
             # Inline code: grey background
             result.append(f"{ansi('48;5;236m')}{part[1:-1]}{ansi('0m')}")
