@@ -7,7 +7,8 @@ import ast, difflib, glob, json, os, re, subprocess, sys, threading, time, urlli
 from pathlib import Path
 
 def ansi(code): return f"\033[{code}"
-def title(t): print(f"\033]0;{t}\007", end="", flush=True); run(f"tmux rename-window {t!r} 2>/dev/null")
+_TMUX_WIN = run("tmux display-message -p '#{window_id}' 2>/dev/null")
+def title(t): print(f"\033]0;{t}\007", end="", flush=True); _TMUX_WIN and run(f"tmux rename-window -t {_TMUX_WIN} {t!r} 2>/dev/null")
 def run(shell_cmd):
     try: return subprocess.check_output(shell_cmd, shell=True, text=True, stderr=subprocess.STDOUT).strip()
     except: return None
