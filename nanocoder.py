@@ -71,6 +71,7 @@ def stream_chat(messages, model):
     in_xml_tag, in_code_fence, interrupted = False, False, False
     def spin():
         spinner_idx = 0
+        print()  # Move to new line before spinner
         while not stop_event.is_set(): print(f"\r{ansi('47;30m')} AI {ansi('0m')} {'⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'[spinner_idx % 10]} ", end="", flush=True); time.sleep(0.1); spinner_idx += 1
     def flush_md():
         nonlocal md_buffer
@@ -82,7 +83,7 @@ def stream_chat(messages, model):
             started = False
             for line in response:
                 if not line.startswith(b"data: "): continue
-                if not started: stop_event.set(); spinner_thread.join(); print(f"\n\r{ansi('47;30m')} AI {ansi('0m')}   \n", end="", flush=True); started = True
+                if not started: stop_event.set(); spinner_thread.join(); print(f"\r{ansi('47;30m')} AI {ansi('0m')}   \n", end="", flush=True); started = True
                 try:
                     chunk = json.loads(line[6:])["choices"][0]["delta"].get("content", "")
                     full_response += chunk; buffer += chunk
