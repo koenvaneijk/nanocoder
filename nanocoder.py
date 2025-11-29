@@ -112,7 +112,7 @@ def main():
     model = os.getenv("OPENAI_MODEL", "gpt-4o")
     print(f"{ansi('47;30m')} nanocoder v{VERSION} {ansi('0m')} {ansi('47;30m')} {model} {ansi('0m')} {ansi('47;30m')} ctrl+d to send {ansi('0m')}")
     while True:
-        print(f"{ansi('1;34m')}> {ansi('0m')}", end="", flush=True); input_lines = []
+        print(f"\a{ansi('1;34m')}> {ansi('0m')}", end="", flush=True); input_lines = []
         try:
             while True: input_lines.append(input())
         except EOFError: pass
@@ -141,7 +141,7 @@ def main():
                     process.wait()
                 except KeyboardInterrupt: process.terminate(); process.wait(timeout=2); output_lines.append("[INTERRUPTED]"); print("\n[INTERRUPTED]")
                 print(f"\n{ansi('90m')}exit={process.returncode}{ansi('0m')}")
-                try: answer = input("Add to context? [t]runcated/[f]ull/[n]o: ").strip().lower()
+                try: answer = input("\aAdd to context? [t]runcated/[f]ull/[n]o: ").strip().lower()
                 except EOFError: answer = "n"
                 if answer in ("t", "f"):
                     history.append({"role": "user", "content": f"$ {shell_cmd}\nexit={process.returncode}\n" + "\n".join(truncate(output_lines) if answer == "t" else output_lines)})
@@ -170,7 +170,7 @@ def main():
                 results = []
                 for cmd in [shell_cmd.strip() for shell_cmd in shell_commands]:
                     print(f"{ansi('1m')}{cmd}{ansi('0m')}\n"); answer = ""
-                    try: answer = input("Run? (y/n): ").strip().lower()
+                    try: answer = input("\aRun? (y/n): ").strip().lower()
                     except EOFError: answer = "n"
                     if answer == "y":
                         try:
