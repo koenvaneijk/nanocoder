@@ -23,6 +23,14 @@ def system_summary():
     except: _CACHED_SYSTEM_INFO = {}
     return _CACHED_SYSTEM_INFO
 
+def load_agents_md(root):
+    """Load AGENTS.md from root directory if it exists."""
+    agents_path = Path(root, "AGENTS.md")
+    if agents_path.exists():
+        try: return agents_path.read_text()
+        except: pass
+    return None
+
 def get_map(root):
     output = []
     for filepath in (run(f"git -C {root} ls-files") or "").splitlines():
@@ -310,7 +318,9 @@ def main():
         request = user_input
         while True:
             context = f"### Repo Map\n{get_map(repo_root)}\n### Files\n" + "\n".join([f"File: {filepath}\n```\n{Path(repo_root,filepath).read_text()}\n```" for filepath in context_files if Path(repo_root,filepath).exists()])
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "system", "content": f"System summary: {json.dumps(system_summary(), separators=(',',':'))}"}] + history + [{"role": "user", "content": f"{context}\nRequest: {request}"}]
+            agents_md = load_agents_md(repo_root)
+            system_prompt = SYSTEM_PROMPT + (f"\n\n### Project Instructions (AGENTS.md)\n{agents_md}" if agents_md else "")
+            messages = [{"role": "system", "content": system_prompt}, {"role": "system", "content": f"System summary: {json.dumps(system_summary(), separators=(',',':'))}"}] + history + [{"role": "user", "content": f"{context}\nRequest: {request}"}]
             title("⏳ nanocoder"); full_response, interrupted = stream_chat(messages, model)
             if full_response is None: break
             response_content = full_response + ("\n\n[user interrupted]" if interrupted else "")
