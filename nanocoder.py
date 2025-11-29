@@ -53,8 +53,11 @@ def render_md(text):
         else:
             # Links [text](url) -> OSC 8 clickable links (underlined blue)
             part = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', lambda m: f"\033]8;;{m.group(2)}\033\\{ansi('4;34m')}{m.group(1)}{ansi('0m')}\033]8;;\033\\", part)
-            # Bold
+            # Bold **text**
             part = re.sub(r'\*\*(.+?)\*\*', lambda m: f"{ansi('1m')}{m.group(1)}{ansi('22m')}", part)
+            # Italic *text* or _text_ (but not inside words for _)
+            part = re.sub(r'(?<!\*)\*([^*]+?)\*(?!\*)', lambda m: f"{ansi('3m')}{m.group(1)}{ansi('23m')}", part)
+            part = re.sub(r'(?<!\w)_([^_]+?)_(?!\w)', lambda m: f"{ansi('3m')}{m.group(1)}{ansi('23m')}", part)
             # Headers (only at line start)
             part = re.sub(r'^(#{1,3}) (.+)$', lambda m: f"{ansi('1;33m')}{m.group(2)}{ansi('0m')}", part, flags=re.MULTILINE)
             result.append(part)
