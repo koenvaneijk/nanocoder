@@ -136,9 +136,12 @@ def stream_chat(messages, model):
                                     flush_md()
                                     md_buffer = parts[1] if len(parts) > 1 else ""
                                 buffer = buffer[lt_pos:]
-                            elif in_xml_tag or in_code_fence:
-                                # Inside tag or code fence: print raw
+                            elif in_xml_tag:
+                                # Inside XML tag: print raw
                                 print(buffer, end="", flush=True); buffer = ""
+                            elif in_code_fence:
+                                # Inside code fence: print with grey background
+                                print(f"{ansi('48;5;236;37m')}{buffer}", end="", flush=True); buffer = ""
                             else:
                                 # Outside tag: accumulate for markdown
                                 md_buffer += buffer
@@ -152,7 +155,8 @@ def stream_chat(messages, model):
                             break
                 except: pass
             if buffer: 
-                if in_xml_tag or in_code_fence: print(buffer, end="", flush=True)
+                if in_xml_tag: print(buffer, end="", flush=True)
+                elif in_code_fence: print(f"{ansi('48;5;236;37m')}{buffer}", end="", flush=True)
                 else: md_buffer += buffer
             flush_md()
             if in_code_fence: print(f"{ansi('0m')}", end="", flush=True)  # Reset if stream ended in code block
