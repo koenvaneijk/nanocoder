@@ -80,7 +80,7 @@ def render_md(text):
             elif '\n' in inner: inner = inner.split('\n', 1)[1]
             # Add erase-to-end-of-line after each line to extend background color
             inner_lines = inner.split('\n')
-            inner = '\n'.join(f"{line}{ansi('K')}" for line in inner_lines)
+            inner = '\n'.join(f"{line}{ansi('K')}" for line in inner_lines) + ansi('K')
             result.append(f"\n{ansi('48;5;236;37m')}{inner}{ansi('0m')}")
         elif part.startswith('`') and part.endswith('`'):
             result.append(f"{ansi('48;5;236m')}{part[1:-1]}{ansi('0m')}")
@@ -204,7 +204,7 @@ def stream_chat(messages, model):
                             elif in_code_fence:
                                 # Add erase-to-end-of-line after each line to extend background
                                 code_lines = buffer.split('\n')
-                                code_out = '\n'.join(f"{line}{ansi('K')}" if i < len(code_lines) - 1 else line for i, line in enumerate(code_lines))
+                                code_out = '\n'.join(f"{line}{ansi('K')}" for line in code_lines)
                                 print(f"{ansi('48;5;236;37m')}{code_out}", end="", flush=True); buffer = ""
                             else:
                                 md_buffer += buffer
@@ -220,7 +220,7 @@ def stream_chat(messages, model):
                 if in_xml_tag: print(buffer, end="", flush=True)
                 elif in_code_fence:
                     code_lines = buffer.split('\n')
-                    code_out = '\n'.join(f"{line}{ansi('K')}" if i < len(code_lines) - 1 else line for i, line in enumerate(code_lines))
+                    code_out = '\n'.join(f"{line}{ansi('K')}" for line in code_lines)
                     print(f"{ansi('48;5;236;37m')}{code_out}", end="", flush=True)
                 else: md_buffer += buffer
             flush_md()
@@ -231,7 +231,7 @@ def stream_chat(messages, model):
             if in_xml_tag: print(buffer, end="", flush=True)
             elif in_code_fence:
                 code_lines = buffer.split('\n')
-                code_out = '\n'.join(f"{line}{ansi('K')}" if i < len(code_lines) - 1 else line for i, line in enumerate(code_lines))
+                code_out = '\n'.join(f"{line}{ansi('K')}" for line in code_lines)
                 print(f"{ansi('48;5;236;37m')}{code_out}", end="", flush=True)
             else: md_buffer += buffer
         flush_md()
