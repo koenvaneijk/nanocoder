@@ -1,5 +1,5 @@
 # curl -o ~/nanocoder.py https://raw.githubusercontent.com/koenvaneijk/nanocoder/refs/heads/main/nanocoder.py
-VERSION = 29
+VERSION = 30
 TAGS = {"edit": "edit", "find": "find", "replace": "replace", "request": "request_files", "drop": "drop_files", "commit": "commit_message", "shell": "shell_command", "create": "create"}
 SYSTEM_PROMPT = f'You are a coding expert. Answer any questions the user might have. If the user asks you to modify code, use this XML format:\n[{TAGS["edit"]} path="file.py"]\n[{TAGS["find"]}]exact code to replace[/{TAGS["find"]}]\n[{TAGS["replace"]}]new code[/{TAGS["replace"]}]\n[/{TAGS["edit"]}]\nTo delete, leave [{TAGS["replace"]}] empty. To create a new file: [{TAGS["create"]} path="new_file.py"]file content[/{TAGS["create"]}].\nTo request files content: [{TAGS["request"]}]path/f.py[/{TAGS["request"]}].\nTo drop irrelevant files from context to save cognitive capacity: [{TAGS["drop"]}]path/f.py[/{TAGS["drop"]}].\nTo run a shell command: [{TAGS["shell"]}]echo hi[/{TAGS["shell"]}]. The tool will ask the user to approve (y/n). After running, the shell output will be returned truncated (first 10 lines, then a TRUNCATED marker, then the last 40 lines; full output if <= 50 lines).\nWhen making edits provide a [{TAGS["commit"]}]...[/{TAGS["commit"]}].'.replace('[', '<').replace(']', '>')
 
@@ -66,9 +66,9 @@ def run_shell_interactive(cmd):
 
 def stream_chat(messages, model):
     api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key: return print(f"{ansi('31m')}Err: Missing OPENAI_API_KEY{ansi('0m')}")
+    if not api_key: print(f"{ansi('31m')}Err: Missing OPENAI_API_KEY{ansi('0m')}"); return None, False
     stop_event, full_response, buffer, md_buffer = threading.Event(), "", "", ""
-    in_xml_tag, in_code_fence = False, False
+    in_xml_tag, in_code_fence, interrupted = False, False, False
     def spin():
         spinner_idx = 0
         while not stop_event.is_set(): print(f"\r{ansi('47;30m')} AI {ansi('0m')} {'⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'[spinner_idx % 10]} ", end="", flush=True); time.sleep(0.1); spinner_idx += 1
@@ -152,9 +152,18 @@ def stream_chat(messages, model):
                 else: md_buffer += buffer
             flush_md()
             if in_code_fence: print(f"{ansi('0m')}", end="", flush=True)
+    except KeyboardInterrupt:
+        stop_event.set(); spinner_thread.join(); interrupted = True
+        if buffer:
+            if in_xml_tag: print(buffer, end="", flush=True)
+            elif in_code_fence: print(f"{ansi('48;5;236;37m')}{buffer}", end="", flush=True)
+            else: md_buffer += buffer
+        flush_md()
+        if in_code_fence: print(f"{ansi('0m')}", end="", flush=True)
+        print(f"\n{ansi('93m')}[user interrupted]{ansi('0m')}")
     except urllib.error.HTTPError as err: stop_event.set(); spinner_thread.join(); print(f"\n{ansi('31m')}HTTP {err.code}: {err.reason}{ansi('0m')}")
     except Exception as err: stop_event.set(); spinner_thread.join(); print(f"\n{ansi('31m')}Err: {err}{ansi('0m')}")
-    print("\n"); return full_response
+    print("\n"); return full_response, interrupted
 
 def apply_edits(text, root):
     changes = 0
@@ -194,7 +203,7 @@ def main():
         try:
             while True: input_lines.append(input())
         except EOFError: pass
-        except KeyboardInterrupt: title(""); break
+        except KeyboardInterrupt: print(); continue
         user_input = "\n".join(input_lines).strip()
         if not user_input: continue
         if user_input.startswith("/"):
@@ -226,7 +235,12 @@ def main():
         while True:
             context = f"### Repo Map\n{get_map(repo_root)}\n### Files\n" + "\n".join([f"File: {filepath}\n```\n{Path(repo_root,filepath).read_text()}\n```" for filepath in context_files if Path(repo_root,filepath).exists()])
             messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "system", "content": f"System summary: {json.dumps(system_summary(), separators=(',',':'))}"}] + history + [{"role": "user", "content": f"{context}\nRequest: {request}"}]
-            title("⏳ nanocoder"); full_response = stream_chat(messages, model); history.extend([{"role": "user", "content": request}, {"role": "assistant", "content": full_response}]); apply_edits(full_response, repo_root)
+            title("⏳ nanocoder"); full_response, interrupted = stream_chat(messages, model)
+            if full_response is None: break
+            response_content = full_response + ("\n\n[user interrupted]" if interrupted else "")
+            history.extend([{"role": "user", "content": request}, {"role": "assistant", "content": response_content}])
+            if interrupted: break
+            apply_edits(full_response, repo_root)
             file_requests = re.findall(rf'<({TAGS["request"]}|{TAGS["drop"]})>(.*?)</\1>', full_response, re.DOTALL)
             added_files = []
             for tag, content in file_requests:
