@@ -118,7 +118,7 @@ def main():
         try:
             while True: input_lines.append(input())
         except EOFError: pass
-        except KeyboardInterrupt: break
+        except KeyboardInterrupt: title(""); break
         user_input = "\n".join(input_lines).strip()
         if not user_input: continue
         if user_input.startswith("/"):
@@ -127,7 +127,7 @@ def main():
             elif command == "/drop": context_files.discard(arg)
             elif command == "/clear": history = []; print("History cleared.")
             elif command == "/undo": run("git reset --soft HEAD~1")
-            elif command == "/exit": print("Bye!"); break
+            elif command == "/exit": print("Bye!"); title(""); break
             elif command == "/help": print("/add <glob> - Add files to context\n/drop <file> - Remove file from context\n/clear - Clear conversation history\n/undo - Undo last commit\n/update - Update nanocoder\n/exit - Exit\n!<cmd> - Run shell command")
             elif command == "/update":
                 try: current_content, remote_content = Path(__file__).read_text(), urllib.request.urlopen("https://raw.githubusercontent.com/koenvaneijk/nanocoder/refs/heads/main/nanocoder.py").read().decode(); current_content != remote_content and (Path(__file__).write_text(remote_content), print("Updated! Restarting..."), os.execv(sys.executable, [sys.executable] + sys.argv))
