@@ -1,7 +1,7 @@
 # curl -o ~/nanocoder.py https://raw.githubusercontent.com/koenvaneijk/nanocoder/refs/heads/main/nanocoder.py
-VERSION = 26
-TAG_EDIT, TAG_FIND, TAG_REPLACE, TAG_REQUEST, TAG_DROP, TAG_COMMIT, TAG_SHELL, TAG_CREATE = "edit", "find", "replace", "request_files", "drop_files", "commit_message", "shell_command", "create"
-SYSTEM_PROMPT = f'You are a coding expert. Answer any questions the user might have. If the user asks you to modify code, use this XML format:\n[{TAG_EDIT} path="file.py"]\n[{TAG_FIND}]exact code to replace[/{TAG_FIND}]\n[{TAG_REPLACE}]new code[/{TAG_REPLACE}]\n[/{TAG_EDIT}]\nTo delete, leave [{TAG_REPLACE}] empty. To create a new file: [{TAG_CREATE} path="new_file.py"]file content[/{TAG_CREATE}].\nTo request files content: [{TAG_REQUEST}]path/f.py[/{TAG_REQUEST}].\nTo drop irrelevant files from context to save cognitive capacity: [{TAG_DROP}]path/f.py[/{TAG_DROP}].\nTo run a shell command: [{TAG_SHELL}]echo hi[/{TAG_SHELL}]. The tool will ask the user to approve (y/n). After running, the shell output will be returned truncated (first 10 lines, then a TRUNCATED marker, then the last 40 lines; full output if <= 50 lines).\nWhen making edits provide a [{TAG_COMMIT}]...[/{TAG_COMMIT}].'.replace('[', '<').replace(']', '>')
+VERSION = 27
+TAGS = {"edit": "edit", "find": "find", "replace": "replace", "request": "request_files", "drop": "drop_files", "commit": "commit_message", "shell": "shell_command", "create": "create"}
+SYSTEM_PROMPT = f'You are a coding expert. Answer any questions the user might have. If the user asks you to modify code, use this XML format:\n[{TAGS["edit"]} path="file.py"]\n[{TAGS["find"]}]exact code to replace[/{TAGS["find"]}]\n[{TAGS["replace"]}]new code[/{TAGS["replace"]}]\n[/{TAGS["edit"]}]\nTo delete, leave [{TAGS["replace"]}] empty. To create a new file: [{TAGS["create"]} path="new_file.py"]file content[/{TAGS["create"]}].\nTo request files content: [{TAGS["request"]}]path/f.py[/{TAGS["request"]}].\nTo drop irrelevant files from context to save cognitive capacity: [{TAGS["drop"]}]path/f.py[/{TAGS["drop"]}].\nTo run a shell command: [{TAGS["shell"]}]echo hi[/{TAGS["shell"]}]. The tool will ask the user to approve (y/n). After running, the shell output will be returned truncated (first 10 lines, then a TRUNCATED marker, then the last 40 lines; full output if <= 50 lines).\nWhen making edits provide a [{TAGS["commit"]}]...[/{TAGS["commit"]}].'.replace('[', '<').replace(']', '>')
 
 import ast, difflib, glob, json, os, re, subprocess, sys, threading, time, urllib.request, urllib.error, platform, shutil
 from pathlib import Path
@@ -33,11 +33,16 @@ def get_map(root):
         except: pass
     return "\n".join(output)
 
-def get_tag_color(tag):
-    for tag_name, color_code in [(TAG_SHELL, '46;30m'), (TAG_FIND, '41;37m'), (TAG_REPLACE, '42;30m'), (TAG_COMMIT, '44;37m'), (TAG_REQUEST, '45;37m'), (TAG_DROP, '45;37m'), (TAG_EDIT, '43;30m'), (TAG_CREATE, '43;30m')]:
-        if tag_name in tag: return color_code
-
-def truncate(lines, max_lines=50): return lines[:10] + ["[TRUNCATED]"] + lines[-40:] if len(lines) > max_lines else lines
+TAG_COLORS = {TAGS["shell"]: '46;30m', TAGS["find"]: '41;37m', TAGS["replace"]: '42;30m', TAGS["commit"]: '44;37m', TAGS["request"]: '45;37m', TAGS["drop"]: '45;37m', TAGS["edit"]: '43;30m', TAGS["create"]: '43;30m'}
+def get_tag_color(tag): return next((c for t, c in TAG_COLORS.items() if t in tag), None)
+def truncate(lines, n=50): return lines if len(lines) <= n else lines[:10] + ["[TRUNCATED]"] + lines[-40:]
+def run_shell_interactive(cmd):
+    output_lines, process = [], subprocess.Popen(cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    try:
+        for line in process.stdout: print(line, end="", flush=True); output_lines.append(line.rstrip('\n'))
+        process.wait()
+    except KeyboardInterrupt: process.terminate(); process.wait(timeout=2); output_lines.append("[INTERRUPTED]"); print("\n[INTERRUPTED]")
+    return output_lines, process.returncode
 
 def stream_chat(messages, model):
     api_key = os.getenv("OPENAI_API_KEY")
@@ -57,8 +62,7 @@ def stream_chat(messages, model):
                 try:
                     chunk = json.loads(line[6:])["choices"][0]["delta"].get("content", "")
                     full_response += chunk; buffer += chunk
-                    known_tags = [TAG_EDIT, TAG_FIND, TAG_REPLACE, TAG_REQUEST, TAG_DROP, TAG_COMMIT, TAG_SHELL, TAG_CREATE]
-                    tag_pattern = re.compile(r'<(/?(?:' + '|'.join(known_tags) + r'))(?:\s[^>]*)?>') 
+                    tag_pattern = re.compile(r'<(/?(?:' + '|'.join(TAGS.values()) + r'))(?:\s[^>]*)?>') 
                     while True:
                         match = tag_pattern.search(buffer)
                         if match:
@@ -79,7 +83,7 @@ def stream_chat(messages, model):
 
 def apply_edits(text, root):
     changes = 0
-    for path, content in re.findall(rf'<{TAG_CREATE} path="(.*?)">(.*?)</{TAG_CREATE}>', text, re.DOTALL):
+    for path, content in re.findall(rf'<{TAGS["create"]} path="(.*?)">(.*?)</{TAGS["create"]}>', text, re.DOTALL):
         filepath = Path(root, path)
         if filepath.exists(): print(f"{ansi('31m')}Skip create {path} (already exists){ansi('0m')}"); continue
         content = content.strip()
@@ -90,7 +94,7 @@ def apply_edits(text, root):
         filepath.write_text(content)
         for line in content.splitlines(): print(f"{ansi('32m')}+{line}{ansi('0m')}")
         print(f"{ansi('32m')}Created {path}{ansi('0m')}"); changes += 1
-    for path, find_text, replace_text in re.findall(rf'<{TAG_EDIT} path="(.*?)">\s*<{TAG_FIND}>(.*?)</{TAG_FIND}>\s*<{TAG_REPLACE}>(.*?)</{TAG_REPLACE}>\s*</{TAG_EDIT}>', text, re.DOTALL):
+    for path, find_text, replace_text in re.findall(rf'<{TAGS["edit"]} path="(.*?)">\s*<{TAGS["find"]}>(.*?)</{TAGS["find"]}>\s*<{TAGS["replace"]}>(.*?)</{TAGS["replace"]}>\s*</{TAGS["edit"]}>', text, re.DOTALL):
         filepath = Path(root, path)
         if not filepath.exists(): print(f"{ansi('31m')}Skip {path} (not found){ansi('0m')}"); continue
         content = filepath.read_text()
@@ -103,7 +107,7 @@ def apply_edits(text, root):
             for diff_line in difflib.unified_diff(content.splitlines(), new_content.splitlines(), lineterm=""):
                 if not diff_line.startswith(('---','+++')): print(f"{ansi('32m' if diff_line.startswith('+') else '31m' if diff_line.startswith('-') else '0m')}{diff_line}{ansi('0m')}")
             filepath.write_text(new_content); print(f"{ansi('32m')}Applied {path}{ansi('0m')}"); changes += 1
-    commit_match = re.search(rf'<{TAG_COMMIT}>(.*?)</{TAG_COMMIT}>', text, re.DOTALL)
+    commit_match = re.search(rf'<{TAGS["commit"]}>(.*?)</{TAGS["commit"]}>', text, re.DOTALL)
     if changes: run(f"git add -A && git commit -m '{commit_match.group(1).strip() if commit_match else 'Update'}'")
 
 def main():
@@ -134,17 +138,12 @@ def main():
         if user_input.startswith("!"):
             shell_cmd = user_input[1:].strip()
             if shell_cmd:
-                output_lines, process = [], subprocess.Popen(shell_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                try:
-                    for line in process.stdout: print(line, end="", flush=True); output_lines.append(line.rstrip('\n'))
-                    process.wait()
-                except KeyboardInterrupt: process.terminate(); process.wait(timeout=2); output_lines.append("[INTERRUPTED]"); print("\n[INTERRUPTED]")
-                print(f"\n{ansi('90m')}exit={process.returncode}{ansi('0m')}")
-                title("❓ nanocoder")
+                output_lines, exit_code = run_shell_interactive(shell_cmd)
+                print(f"\n{ansi('90m')}exit={exit_code}{ansi('0m')}"); title("❓ nanocoder")
                 try: answer = input("\aAdd to context? [t]runcated/[f]ull/[n]o: ").strip().lower()
                 except EOFError: answer = "n"
                 if answer in ("t", "f"):
-                    history.append({"role": "user", "content": f"$ {shell_cmd}\nexit={process.returncode}\n" + "\n".join(truncate(output_lines) if answer == "t" else output_lines)})
+                    history.append({"role": "user", "content": f"$ {shell_cmd}\nexit={exit_code}\n" + "\n".join(truncate(output_lines) if answer == "t" else output_lines)})
                     print(f"{ansi('93m')}Added to context{ansi('0m')}")
             continue
 
@@ -153,34 +152,27 @@ def main():
             context = f"### Repo Map\n{get_map(repo_root)}\n### Files\n" + "\n".join([f"File: {filepath}\n```\n{Path(repo_root,filepath).read_text()}\n```" for filepath in context_files if Path(repo_root,filepath).exists()])
             messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "system", "content": f"System summary: {json.dumps(system_summary(), separators=(',',':'))}"}] + history + [{"role": "user", "content": f"{context}\nRequest: {request}"}]
             title("⏳ nanocoder"); full_response = stream_chat(messages, model); history.extend([{"role": "user", "content": request}, {"role": "assistant", "content": full_response}]); apply_edits(full_response, repo_root)
-            file_requests = re.findall(rf'<({TAG_REQUEST}|{TAG_DROP})>(.*?)</\1>', full_response, re.DOTALL)
+            file_requests = re.findall(rf'<({TAGS["request"]}|{TAGS["drop"]})>(.*?)</\1>', full_response, re.DOTALL)
             added_files = []
             for tag, content in file_requests:
                 for filepath in content.strip().split('\n'):
                     filepath = filepath.strip()
                     if not filepath: continue
-                    if tag == TAG_REQUEST and filepath not in context_files and Path(repo_root, filepath).exists():
+                    if tag == TAGS["request"] and filepath not in context_files and Path(repo_root, filepath).exists():
                         added_files.append(filepath)
-                    elif tag == TAG_DROP:
+                    elif tag == TAGS["drop"]:
                         context_files.discard(filepath)
             context_files.update(added_files)
             if added_files: print(f"{ansi('93m')}+{len(added_files)} file(s){ansi('0m')}"); request = f"Added files: {', '.join(added_files)}. Please continue."; continue
-            shell_commands = re.findall(rf'<{TAG_SHELL}>(.*?)</{TAG_SHELL}>', full_response, re.DOTALL)
+            shell_commands = re.findall(rf'<{TAGS["shell"]}>(.*?)</{TAGS["shell"]}>', full_response, re.DOTALL)
             if shell_commands:
                 results = []
-                for cmd in [shell_cmd.strip() for shell_cmd in shell_commands]:
-                    print(f"{ansi('1m')}{cmd}{ansi('0m')}\n"); answer = ""
-                    title("❓ nanocoder")
+                for cmd in [s.strip() for s in shell_commands]:
+                    print(f"{ansi('1m')}{cmd}{ansi('0m')}\n"); title("❓ nanocoder")
                     try: answer = input("\aRun? (y/n): ").strip().lower()
                     except EOFError: answer = "n"
                     if answer == "y":
-                        try:
-                            output_lines, process = [], subprocess.Popen(cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                            try:
-                                for line in process.stdout: print(line, end="", flush=True); output_lines.append(line.rstrip('\n'))
-                                process.wait()
-                            except KeyboardInterrupt: process.terminate(); process.wait(timeout=2); output_lines.append("[INTERRUPTED by Ctrl+C]"); print("\n[INTERRUPTED by Ctrl+C]")
-                            results.append(f"$ {cmd}\nexit={process.returncode}\n" + "\n".join(truncate(output_lines)))
+                        try: output_lines, exit_code = run_shell_interactive(cmd); results.append(f"$ {cmd}\nexit={exit_code}\n" + "\n".join(truncate(output_lines)))
                         except Exception as err: results.append(f"$ {cmd}\nerror: {err}")
                     else: results.append(f"$ {cmd}\nDENIED by user.")
                 request = "Shell results:\n" + "\n\n".join(results) + "\nPlease continue."; continue
