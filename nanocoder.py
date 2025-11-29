@@ -51,17 +51,21 @@ def format_table(lines):
             if j < col_count: col_widths[j] = max(col_widths[j], len(cell))
     col_widths = [max(w, 3) for w in col_widths]  # Minimum width of 3
     bg, sep = '48;5;236', '38;5;245'  # Dark gray background, medium gray separators
-    result = []
+    total_width = sum(col_widths) + (col_count * 3) + 1  # cells + padding + separators
+    divider = f"{ansi(f'{bg};{sep}m')} |" + '|'.join('-' * (w + 2) for w in col_widths) + f"| {ansi('0m')}"
+    empty_line = f"{ansi(f'{bg}m')} {' ' * total_width} {ansi('0m')}"
+    result = [empty_line, divider]  # Top padding and border
     for i, row in enumerate(rows):
         while len(row) < col_count: row.append('')
         if i == 1:  # Separator row
-            result.append(f"{ansi(f'{bg};{sep}m')}|" + '|'.join('-' * (w + 2) for w in col_widths) + f"|{ansi('0m')}")
+            result.append(divider)
         elif i == 0:  # Header row
             cells = [f" {cell.ljust(col_widths[j])} " for j, cell in enumerate(row)]
-            result.append(f"{ansi(f'{bg};1m')}{ansi(f'{sep}m')}|{ansi('0m')}{ansi(f'{bg};1m')}" + f"{ansi(f'{sep}m')}|{ansi('0m')}{ansi(f'{bg};1m')}".join(cells) + f"{ansi(f'{sep}m')}|{ansi('0m')}")
+            result.append(f"{ansi(f'{bg};1m')} {ansi(f'{sep}m')}|{ansi(f'0m')}{ansi(f'{bg};1m')}" + f"{ansi(f'{sep}m')}|{ansi(f'0m')}{ansi(f'{bg};1m')}".join(cells) + f"{ansi(f'{sep}m')}|{ansi('0m')}{ansi(f'{bg}m')} {ansi('0m')}")
         else:  # Data rows
             cells = [f" {cell.ljust(col_widths[j])} " for j, cell in enumerate(row)]
-            result.append(f"{ansi(f'{bg}m')}{ansi(f'{sep}m')}|{ansi('0m')}{ansi(f'{bg}m')}" + f"{ansi(f'{sep}m')}|{ansi('0m')}{ansi(f'{bg}m')}".join(cells) + f"{ansi(f'{sep}m')}|{ansi('0m')}")
+            result.append(f"{ansi(f'{bg}m')} {ansi(f'{sep}m')}|{ansi(f'0m')}{ansi(f'{bg}m')}" + f"{ansi(f'{sep}m')}|{ansi(f'0m')}{ansi(f'{bg}m')}".join(cells) + f"{ansi(f'{sep}m')}|{ansi('0m')}{ansi(f'{bg}m')} {ansi('0m')}")
+    result.extend([divider, empty_line])  # Bottom border and padding
     return '\n'.join(result)
 
 def render_md(text):
