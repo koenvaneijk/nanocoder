@@ -317,7 +317,10 @@ def main():
 
         request = user_input
         while True:
-            context = f"### Repo Map\n{get_map(repo_root)}\n### Files\n" + "\n".join([f"File: {filepath}\n```\n{Path(repo_root,filepath).read_text()}\n```" for filepath in context_files if Path(repo_root,filepath).exists()])
+            def safe_read(filepath):
+                try: return Path(repo_root, filepath).read_text()
+                except (UnicodeDecodeError, OSError): return "[binary or unreadable file]"
+            context = f"### Repo Map\n{get_map(repo_root)}\n### Files\n" + "\n".join([f"File: {filepath}\n```\n{safe_read(filepath)}\n```" for filepath in context_files if Path(repo_root,filepath).exists()])
             agents_md = load_agents_md(repo_root)
             system_prompt = SYSTEM_PROMPT + (f"\n\n### Project Instructions (AGENTS.md)\n{agents_md}" if agents_md else "")
             messages = [{"role": "system", "content": system_prompt}, {"role": "system", "content": f"System summary: {json.dumps(system_summary(), separators=(',',':'))}"}] + history + [{"role": "user", "content": f"{context}\nRequest: {request}"}]
