@@ -156,14 +156,16 @@ def stream_chat(messages, model):
                             if fence_pos != -1: fence_match = re.match(r'^(\n```[^\n]*\n?)', buffer[fence_pos:])
                         if fence_match and not in_xml_tag:
                             fence_pos = buffer.find(fence_match.group(0))
-                            md_buffer += buffer[:fence_pos]
-                            if not in_code_fence: flush_md()
+                            if in_code_fence:
+                                # Print remaining code content WITH code styling before closing
+                                print(f"{ansi('48;5;236;37m')}{buffer[:fence_pos]}{ansi('0m')}", end="", flush=True)
+                            else:
+                                md_buffer += buffer[:fence_pos]
+                                flush_md()
                             in_code_fence = not in_code_fence
                             fence_text = fence_match.group(0)
                             if in_code_fence:
                                 print(f"{ansi('48;5;236;37m')}", end="", flush=True)
-                            else:
-                                print(f"{ansi('0m')}", end="", flush=True)
                             buffer = buffer[fence_pos + len(fence_text):]
                             continue
                         match = tag_pattern.search(buffer)
