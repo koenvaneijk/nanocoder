@@ -317,11 +317,17 @@ def main():
     repo_root, context_files, history = run("git rev-parse --show-toplevel") or os.getcwd(), set(), []
     model = os.getenv("OPENAI_MODEL", "gpt-4o")
     send_key = "ctrl+z enter" if sys.platform == "win32" else "ctrl+d"
-    print(f"{styled(' nanocoder v' + str(VERSION) + ' ', '47;30m')} {styled(' ' + model + ' ', '47;30m')} {styled(f' {send_key} to send ', '47;30m')}")
+    print(f"{styled(' nanocoder v' + str(VERSION) + ' ', '47;30m')} {styled(' ' + model + ' ', '47;30m')} {styled(f' 2x enter or {send_key} to send ', '47;30m')}")
     while True:
         title("❓ nanocoder"); print(f"\a{styled('> ', '1;34m')}", end="", flush=True); input_lines = []
         try:
-            while True: input_lines.append(input())
+            while True:
+                line = input()
+                # Send on empty line after content, or explicit "//" send command
+                if (line == "" and input_lines and input_lines[-1] == "") or line == "//":
+                    if line == "": input_lines = input_lines[:-1]  # Remove trailing empty line
+                    break
+                input_lines.append(line)
         except EOFError: pass
         except KeyboardInterrupt: print(); continue
         if not (user_input := "\n".join(input_lines).strip()): continue
