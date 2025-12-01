@@ -400,6 +400,9 @@ def main():
             messages = [{"role": "system", "content": system_prompt}, {"role": "system", "content": f"System summary: {json.dumps(system_summary(), separators=(',',':'))}"}] + history + [{"role": "user", "content": f"{context}\nRequest: {request}"}]
             title("⏳ nanocoder"); full_response, interrupted = stream_chat(messages, model)
             if full_response is None: break
+            if MEMORY_LIMIT:
+                h_tok, c_tok, _ = check_memory(history + [{"role": "user", "content": request}, {"role": "assistant", "content": full_response}], context_files, repo_root, model)
+                print(styled(f"[{h_tok + c_tok}/{MEMORY_LIMIT} tokens]", "90m"))
             response_content = full_response + ("\n\n[user interrupted]" if interrupted else "")
             history.extend([{"role": "user", "content": request}, {"role": "assistant", "content": response_content}])
             if interrupted: break
