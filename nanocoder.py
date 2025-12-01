@@ -5,17 +5,37 @@ TAGS = {"edit": "edit", "find": "find", "replace": "replace", "request": "reques
 SYSTEM_PROMPT = f'You are a coding expert. Answer any questions the user might have. If the user asks you to modify code, use this XML format:\n[{TAGS["edit"]} path="file.py"]\n[{TAGS["find"]}]exact code to replace[/{TAGS["find"]}]\n[{TAGS["replace"]}]new code[/{TAGS["replace"]}]\n[/{TAGS["edit"]}]\nTo delete, leave [{TAGS["replace"]}] empty. To create a new file: [{TAGS["create"]} path="new_file.py"]file content[/{TAGS["create"]}].\nTo request files content: [{TAGS["request"]}]path/f.py[/{TAGS["request"]}].\nTo drop irrelevant files from context to save cognitive capacity: [{TAGS["drop"]}]path/f.py[/{TAGS["drop"]}].\nTo run a shell command: [{TAGS["shell"]}]echo hi[/{TAGS["shell"]}]. The tool will ask the user to approve (y/n). After running, the shell output will be returned truncated (first 10 lines, then a TRUNCATED marker, then the last 40 lines; full output if <= 50 lines).\nWhen making edits provide a [{TAGS["commit"]}]...[/{TAGS["commit"]}].'.replace('[', '<').replace(']', '>')
 
 import ast, difflib, glob, json, os, re, subprocess, sys, threading, time, urllib.request, urllib.error, platform, shutil
-
-def count_tokens(text): return len(text) // 4  # ~4 chars per token estimate
 from pathlib import Path
 
-def ansi(code): return f"\033[{code}"
-def styled(text, style): return f"{ansi(style)}{text}{ansi('0m')}"
+def count_tokens(text): return len(text) // 4  # ~4 chars per token estimate
+
+# Enable ANSI escape codes on Windows
+_ANSI_ENABLED = True
+if sys.platform == "win32":
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        # Enable VIRTUAL_TERMINAL_PROCESSING for stdout
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        mode = ctypes.c_ulong()
+        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+        kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    except:
+        _ANSI_ENABLED = False
+
+def ansi(code): return f"\033[{code}" if _ANSI_ENABLED else ""
+def styled(text, style): return f"{ansi(style)}{text}{ansi('0m')}" if _ANSI_ENABLED else text
 def run(shell_cmd):
     try: return subprocess.check_output(shell_cmd, shell=True, text=True, stderr=subprocess.STDOUT).strip()
     except: return None
-_TMUX_WIN = run("tmux display-message -p '#{window_id}' 2>/dev/null")
-def title(t): print(f"\033]0;{t}\007", end="", flush=True); _TMUX_WIN and run(f"tmux rename-window -t {_TMUX_WIN} {t!r} 2>/dev/null")
+_TMUX_WIN = run("tmux display-message -p '#{window_id}' 2>/dev/null") if sys.platform != "win32" else None
+def title(t):
+    if sys.platform == "win32":
+        try: ctypes.windll.kernel32.SetConsoleTitleW(t)
+        except: pass
+    else:
+        print(f"\033]0;{t}\007", end="", flush=True)
+    _TMUX_WIN and run(f"tmux rename-window -t {_TMUX_WIN} {t!r} 2>/dev/null")
 _CACHED_SYSTEM_INFO = None
 def system_summary():
     global _CACHED_SYSTEM_INFO
