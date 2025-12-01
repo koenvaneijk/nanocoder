@@ -348,7 +348,15 @@ def main():
             elif command == "/undo": run("git reset --soft HEAD~1")
             elif command == "/exit": print("Bye!"); title(""); break
             elif command == "/auto": auto_approve = not auto_approve; print(styled(f"Auto: {'ON' if auto_approve else 'OFF'}", "93m"))
-            elif command == "/help": print("/add /drop /clear /undo /update /memory /auto /exit !<cmd>")
+            elif command == "/help": print("""/add <glob>  - Add files to context
+/drop <file> - Remove file from context
+/clear       - Clear conversation history
+/undo        - Undo last commit
+/update      - Update nanocoder
+/memory      - Show memory usage
+/auto        - Toggle auto-approve mode (Jesus take the wheel)
+/exit        - Exit
+!<cmd>       - Run shell command""")
             elif command == "/memory":
                 h_tok, c_tok, _ = check_memory(history, context_files, repo_root, model)
                 print(f"History: {h_tok} tokens, Context: {c_tok} tokens, Total: {h_tok + c_tok} tokens" + (f" (limit: {MEMORY_LIMIT})" if MEMORY_LIMIT else ""))
