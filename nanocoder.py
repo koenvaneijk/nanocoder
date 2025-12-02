@@ -128,9 +128,16 @@ def stream_chat(messages, model):
         nonlocal md_buffer
         if '\n\n' in md_buffer:
             parts = md_buffer.rsplit('\n\n', 1)
-            recent_lines = parts[0].rstrip().split('\n')[-5:]
+            to_flush = parts[0]
+            recent_lines = to_flush.rstrip().split('\n')[-5:]
             in_table = any(is_table_sep(ln) for ln in recent_lines) or all(is_table_row(ln) for ln in recent_lines if ln.strip())
-            if not in_table:
+            # Check for incomplete markdown patterns (unmatched **, *, _, `)
+            last_line = to_flush.split('\n')[-1] if to_flush else ""
+            incomplete = (last_line.count('**') % 2 == 1 or 
+                         (last_line.count('`') - last_line.count('```') * 3) % 2 == 1 or
+                         re.search(r'(?<!\*)\*[^*\n]+$', last_line) or
+                         re.search(r'(?<!\w)_[^_\n]+$', last_line))
+            if not in_table and not incomplete:
                 out(parts[0] + '\n\n'); md_buffer = parts[1] if len(parts) > 1 else ""
     spinner = threading.Thread(target=spin, daemon=True); spinner.start()
     req = urllib.request.Request(f"{os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, data=json.dumps({"model": model, "messages": messages, "stream": True}).encode())
