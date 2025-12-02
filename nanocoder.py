@@ -98,8 +98,9 @@ def render_md(text):
                 level, text = len(m.group(1)), m.group(2)
                 if level == 1: return f"{ansi('1;4;33m')}{text}{ansi('0m')}"
                 elif level == 2: return f"{ansi('1;33m')}{text}{ansi('0m')}"
-                else: return f"{ansi('33m')}{text}{ansi('0m')}"
-            part = re.sub(r'^(#{1,3}) (.+)$', format_header, part, flags=re.MULTILINE)
+                elif level == 3: return f"{ansi('33m')}{text}{ansi('0m')}"
+                else: return f"{ansi('3;33m')}{text}{ansi('0m')}"
+            part = re.sub(r'^(#{1,4}) (.+)$', format_header, part, flags=re.MULTILINE)
             result.append(part)
     return ''.join(result)
 def truncate(lines, n=50): return lines if len(lines) <= n else lines[:10] + ["[TRUNCATED]"] + lines[-40:]
