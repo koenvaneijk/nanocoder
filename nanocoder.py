@@ -285,7 +285,10 @@ def main():
                 except: return "[binary/unreadable]"
             context = f"### Repo Map\n{get_map(repo_root)}\n### Files\n" + "\n".join(f"File: {f}\n```\n{read(f)}\n```" for f in context_files if Path(repo_root,f).exists())
             agents_md = load_agents_md(repo_root)
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z").strip()
+            now = datetime.datetime.now().astimezone()
+            day = now.day
+            suffix = "th" if 11 <= day <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+            current_time = now.strftime(f"%A {day}{suffix} of %B %Y, %H:%M %Z")
             system_prompt = SYSTEM_PROMPT + (f"\n\n### Project Instructions (AGENTS.md)\n{agents_md}" if agents_md else "")
             messages = [{"role": "system", "content": system_prompt}, {"role": "system", "content": f"System summary: {json.dumps(system_summary(), separators=(',',':'))}\n\nCurrent time: {current_time}"}] + history + [{"role": "user", "content": f"{context}\nRequest: {request}"}]
             title("⏳ nanocoder"); full_response, interrupted = stream_chat(messages, model)
