@@ -3,7 +3,7 @@ VERSION = 45
 TAGS = {"edit": "edit", "find": "find", "replace": "replace", "request": "request_files", "drop": "drop_files", "commit": "commit_message", "shell": "shell_command", "create": "create"}
 SYSTEM_PROMPT = f'You are a coding expert. Answer any questions the user might have. If the user asks you to modify code, use this XML format:\n[{TAGS["edit"]} path="file.py"]\n[{TAGS["find"]}]lines to find[/{TAGS["find"]}]\n[{TAGS["replace"]}]new code[/{TAGS["replace"]}]\n[/{TAGS["edit"]}]\nThe [{TAGS["find"]}] text is replaced literally, so it must match exactly. Keep it short - only enough lines to be unambiguous. Split large changes into multiple small edits.\nTo delete, leave [{TAGS["replace"]}] empty. To create a new file: [{TAGS["create"]} path="new_file.py"]file content[/{TAGS["create"]}].\nTo request files (one path per line):\n[{TAGS["request"]}]\npath/file1.py\npath/file2.py\n[/{TAGS["request"]}]\nTo drop files from context (one path per line):\n[{TAGS["drop"]}]\npath/file.py\n[/{TAGS["drop"]}]\nTo run a shell command: [{TAGS["shell"]}]echo hi[/{TAGS["shell"]}]. The tool will ask the user to approve (y/n). After running, the shell output will be returned truncated (first 10 lines, then a TRUNCATED marker, then the last 40 lines; full output if <= 50 lines).\nWhen making edits provide a [{TAGS["commit"]}]...[/{TAGS["commit"]}].'.replace('[', '<').replace(']', '>')
 
-import ast, difflib, glob, json, os, re, struct, subprocess, sys, threading, time, urllib.request, urllib.error, platform, shutil
+import ast, difflib, glob, json, os, re, struct, subprocess, sys, threading, time, urllib.request, urllib.error, platform, shutil, datetime
 from pathlib import Path
 
 def ansi(code): return f"\033[{code}"
@@ -285,8 +285,9 @@ def main():
                 except: return "[binary/unreadable]"
             context = f"### Repo Map\n{get_map(repo_root)}\n### Files\n" + "\n".join(f"File: {f}\n```\n{read(f)}\n```" for f in context_files if Path(repo_root,f).exists())
             agents_md = load_agents_md(repo_root)
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z").strip()
             system_prompt = SYSTEM_PROMPT + (f"\n\n### Project Instructions (AGENTS.md)\n{agents_md}" if agents_md else "")
-            messages = [{"role": "system", "content": system_prompt}, {"role": "system", "content": f"System summary: {json.dumps(system_summary(), separators=(',',':'))}"}] + history + [{"role": "user", "content": f"{context}\nRequest: {request}"}]
+            messages = [{"role": "system", "content": system_prompt}, {"role": "system", "content": f"System summary: {json.dumps(system_summary(), separators=(',',':'))}\n\nCurrent time: {current_time}"}] + history + [{"role": "user", "content": f"{context}\nRequest: {request}"}]
             title("⏳ nanocoder"); full_response, interrupted = stream_chat(messages, model)
             if full_response is None: break
             response_content = full_response + ("\n\n[user interrupted]" if interrupted else "")
