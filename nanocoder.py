@@ -259,7 +259,20 @@ def main():
         if user_input.startswith("/"):
             command, _, arg = user_input.partition(" ")
             def cmd_add(): found = [f for f in glob.glob(arg, root_dir=repo_root, recursive=True) if Path(repo_root, f).is_file()]; context_files.update(found); print(f"Added {len(found)} files")
-            commands = {"/add": cmd_add, "/drop": lambda: context_files.discard(arg), "/clear": lambda: (history.clear(), print("History cleared.")), "/undo": lambda: run("git reset --soft HEAD~1"), "/help": lambda: print("/add <glob> - Add files\n/drop <file> - Remove file\n/clear - Clear history\n/undo - Undo commit\n/exit - Exit\n!<cmd> - Shell")}
+            def cmd_export():
+                import gzip, base64
+                src = Path(__file__).read_text()
+                compressed = gzip.compress(src.encode('utf-8'), compresslevel=9)
+                b64 = base64.b64encode(compressed).decode('ascii')
+                env_vars = []
+                for key in ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL']:
+                    if val := os.environ.get(key): env_vars.append(f'{key}={val!r}')
+                env_str = ' '.join(env_vars) + ' ' if env_vars else ''
+                cmd = f"echo '{b64}'|base64 -d|gunzip|{env_str}python3 -"
+                print(f"\n{styled('Copy this command:', '1m')}\n\n{cmd}\n")
+                print(styled(f"Size: {len(cmd)} chars, {len(b64)} base64 bytes", '90m'))
+                if any(k in env_str for k in ['API_KEY']): print(styled("⚠ Warning: contains API key(s)!", '93m'))
+            commands = {"/add": cmd_add, "/drop": lambda: context_files.discard(arg), "/clear": lambda: (history.clear(), print("History cleared.")), "/undo": lambda: run("git reset --soft HEAD~1"), "/export": cmd_export, "/help": lambda: print("/add <glob> - Add files\n/drop <file> - Remove file\n/clear - Clear history\n/undo - Undo commit\n/export - Export as portable bash command\n/exit - Exit\n!<cmd> - Shell")}
             if command == "/exit": print("Bye!"); title(""); break
             if command in commands: commands[command]()
             continue
