@@ -312,6 +312,9 @@ def main():
                     return ast.unparse(tree)
                 try: src = minify_ast(src)
                 except: pass
+                # Remove /export from exported version (it's meta and large)
+                src = re.sub(r'def cmd_export\(\):.*?(?=\n            commands)', '', src, flags=re.DOTALL)
+                src = re.sub(r'"/export":\s*cmd_export,?\s*', '', src)
                 # Collapse whitespace
                 src = re.sub(r'[ \t]+$', '', src, flags=re.MULTILINE)
                 src = re.sub(r'\n{2,}', '\n', src)
