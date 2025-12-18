@@ -1,4 +1,4 @@
-# Special instructions for software engineers
+# Special instructions for AI agents
 
 ## Caveats
 
