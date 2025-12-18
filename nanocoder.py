@@ -260,7 +260,7 @@ def main():
             command, _, arg = user_input.partition(" ")
             def cmd_add(): found = [f for f in glob.glob(arg, root_dir=repo_root, recursive=True) if Path(repo_root, f).is_file()]; context_files.update(found); print(f"Added {len(found)} files")
             def cmd_export():
-                import gzip, base64, tokenize, io
+                import base64, tokenize, io
                 src = Path(__file__).read_text()
                 # Minify: remove comments and docstrings
                 tokens, prev_type, result = [], None, []
@@ -322,9 +322,10 @@ def main():
                 if env_vars:
                     env_setup = 'import os;E=os.environ;' + ';'.join(f'E[{k!r}]={v!r}' for k, v in env_vars.items()) + '\n'
                     src = env_setup + src
-                compressed = gzip.compress(src.encode('utf-8'), compresslevel=9)
+                import lzma
+                compressed = lzma.compress(src.encode('utf-8'), preset=9)
                 b64 = base64.b64encode(compressed).decode('ascii')
-                cmd = f"echo '{b64}'|base64 -d|gunzip|python3 -"
+                cmd = f"echo '{b64}'|base64 -d|xz -d|python3 -"
                 print(f"\n{styled('Copy this command:', '1m')}\n\n{cmd}\n")
                 print(styled(f"Size: {len(cmd)} chars, {len(b64)} base64 bytes", '90m'))
                 if env_vars and any('API_KEY' in k for k in env_vars): print(styled("⚠ Warning: contains API key(s)!", '93m'))
