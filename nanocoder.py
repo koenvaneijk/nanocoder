@@ -262,18 +262,22 @@ def main():
             def cmd_export():
                 import gzip, base64, tokenize, io
                 src = Path(__file__).read_text()
-                # Minify: remove comments and docstrings, collapse whitespace
-                tokens, prev_type = [], None
+                # Minify: remove comments and docstrings
+                tokens, prev_type, result = [], None, []
                 try:
                     for tok in tokenize.generate_tokens(io.StringIO(src).readline):
                         if tok.type == tokenize.COMMENT: continue
-                        if tok.type == tokenize.STRING and prev_type == tokenize.NEWLINE: continue  # docstring
-                        tokens.append(tok); prev_type = tok.type
-                    src = tokenize.untokenize(tokens)
+                        if tok.type == tokenize.STRING and prev_type in (tokenize.NEWLINE, tokenize.INDENT, None): continue
+                        result.append(tok); prev_type = tok.type
+                    src = tokenize.untokenize(result)
                 except: pass
-                # Collapse blank lines and trailing whitespace
-                src = re.sub(r'[ \t]+$', '', src, flags=re.MULTILINE)
-                src = re.sub(r'\n{3,}', '\n\n', src)
+                # Aggressive whitespace removal
+                src = re.sub(r'[ \t]+$', '', src, flags=re.MULTILINE)  # trailing whitespace
+                src = re.sub(r'\n{2,}', '\n', src)  # all blank lines
+                src = re.sub(r' *([,;:=\+\-\*/<>]) *', r'\1', src)  # spaces around operators (careful)
+                # Restore necessary spaces (after keywords, before/after 'in', 'not', 'and', 'or', 'is', 'if', 'else', 'for', 'while', etc)
+                src = re.sub(r'\b(import|from|return|yield|raise|assert|global|nonlocal|lambda|if|else|elif|for|while|with|try|except|finally|as|in|not|and|or|is|class|def|pass|break|continue)([^\s\w])', r'\1 \2', src)
+                src = re.sub(r'([^\s\w])(import|from|return|yield|raise|assert|global|nonlocal|lambda|if|else|elif|for|while|with|try|except|finally|as|in|not|and|or|is|class|def)\b', r'\1 \2', src)
                 # Gather env vars to embed
                 env_vars = {}
                 for key in ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL']:
