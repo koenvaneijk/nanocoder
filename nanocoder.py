@@ -253,7 +253,8 @@ def main():
         title("❓ nanocoder"); print(f"\a{styled('❯ ', '1;34m')}", end="", flush=True); input_lines = []
         try:
             while True: input_lines.append(input())
-        except EOFError: pass
+        except EOFError:
+            if not input_lines: print("\nBye!"); title(""); break
         except KeyboardInterrupt: print(); continue
         if not (user_input := "\n".join(input_lines).strip()): continue
         if user_input.startswith("/"):
