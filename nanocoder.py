@@ -271,13 +271,50 @@ def main():
                         result.append(tok); prev_type = tok.type
                     src = tokenize.untokenize(result)
                 except: pass
-                # Aggressive whitespace removal
-                src = re.sub(r'[ \t]+$', '', src, flags=re.MULTILINE)  # trailing whitespace
-                src = re.sub(r'\n{2,}', '\n', src)  # all blank lines
-                src = re.sub(r' *([,;:=\+\-\*/<>]) *', r'\1', src)  # spaces around operators (careful)
-                # Restore necessary spaces (after keywords, before/after 'in', 'not', 'and', 'or', 'is', 'if', 'else', 'for', 'while', etc)
-                src = re.sub(r'\b(import|from|return|yield|raise|assert|global|nonlocal|lambda|if|else|elif|for|while|with|try|except|finally|as|in|not|and|or|is|class|def|pass|break|continue)([^\s\w])', r'\1 \2', src)
-                src = re.sub(r'([^\s\w])(import|from|return|yield|raise|assert|global|nonlocal|lambda|if|else|elif|for|while|with|try|except|finally|as|in|not|and|or|is|class|def)\b', r'\1 \2', src)
+                # AST-based variable renaming for smaller output
+                def minify_ast(source):
+                    tree = ast.parse(source)
+                    scopes, builtins = [{}], set(dir(__builtins__)) | {'self', 'cls', 'args', 'kwargs'}
+                    kw = {'False','None','True','and','as','assert','async','await','break','class','continue','def','del','elif','else','except','finally','for','from','global','if','import','in','is','lambda','nonlocal','not','or','pass','raise','return','try','while','with','yield'}
+                    def to_short(n):
+                        c, name = 'abcdefghijklmnopqrstuvwxyz', ''
+                        while n >= 0: name, n = c[n % 26] + name, n // 26 - 1
+                        return name
+                    def get_short(n):
+                        name = to_short(n)
+                        while name in kw or name in builtins: n += 1; name = to_short(n)
+                        return name
+                    def add_var(name):
+                        if name.startswith('_') or name in builtins or name in kw: return name
+                        if name not in scopes[-1]: scopes[-1][name] = get_short(len(scopes[-1]))
+                        return scopes[-1][name]
+                    def get_var(name):
+                        for s in reversed(scopes):
+                            if name in s: return s[name]
+                        return name
+                    class Minifier(ast.NodeTransformer):
+                        def visit_FunctionDef(self, node):
+                            scopes.append({})
+                            for a in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
+                                if a.arg not in ('self', 'cls'): a.arg = add_var(a.arg)
+                            if node.args.vararg: node.args.vararg.arg = add_var(node.args.vararg.arg)
+                            if node.args.kwarg: node.args.kwarg.arg = add_var(node.args.kwarg.arg)
+                            self.generic_visit(node); scopes.pop(); return node
+                        visit_AsyncFunctionDef = visit_FunctionDef
+                        def visit_Lambda(self, node):
+                            scopes.append({})
+                            for a in node.args.args: a.arg = add_var(a.arg)
+                            self.generic_visit(node); scopes.pop(); return node
+                        def visit_Name(self, node):
+                            node.id = add_var(node.id) if isinstance(node.ctx, ast.Store) else get_var(node.id)
+                            return node
+                    tree = Minifier().visit(tree); ast.fix_missing_locations(tree)
+                    return ast.unparse(tree)
+                try: src = minify_ast(src)
+                except: pass
+                # Collapse whitespace
+                src = re.sub(r'[ \t]+$', '', src, flags=re.MULTILINE)
+                src = re.sub(r'\n{2,}', '\n', src)
                 # Gather env vars to embed
                 env_vars = {}
                 for key in ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL']:
