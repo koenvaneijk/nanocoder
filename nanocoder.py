@@ -260,18 +260,33 @@ def main():
             command, _, arg = user_input.partition(" ")
             def cmd_add(): found = [f for f in glob.glob(arg, root_dir=repo_root, recursive=True) if Path(repo_root, f).is_file()]; context_files.update(found); print(f"Added {len(found)} files")
             def cmd_export():
-                import gzip, base64
+                import gzip, base64, tokenize, io
                 src = Path(__file__).read_text()
+                # Minify: remove comments and docstrings, collapse whitespace
+                tokens, prev_type = [], None
+                try:
+                    for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+                        if tok.type == tokenize.COMMENT: continue
+                        if tok.type == tokenize.STRING and prev_type == tokenize.NEWLINE: continue  # docstring
+                        tokens.append(tok); prev_type = tok.type
+                    src = tokenize.untokenize(tokens)
+                except: pass
+                # Collapse blank lines and trailing whitespace
+                src = re.sub(r'[ \t]+$', '', src, flags=re.MULTILINE)
+                src = re.sub(r'\n{3,}', '\n\n', src)
+                # Gather env vars to embed
+                env_vars = {}
+                for key in ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL']:
+                    if val := os.environ.get(key): env_vars[key] = val
+                if env_vars:
+                    env_setup = 'import os;' + ';'.join(f'os.environ[{k!r}]={v!r}' for k, v in env_vars.items()) + '\n'
+                    src = env_setup + src
                 compressed = gzip.compress(src.encode('utf-8'), compresslevel=9)
                 b64 = base64.b64encode(compressed).decode('ascii')
-                env_vars = []
-                for key in ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL']:
-                    if val := os.environ.get(key): env_vars.append(f'{key}={val!r}')
-                env_str = ' '.join(env_vars) + ' ' if env_vars else ''
-                cmd = f"echo '{b64}'|base64 -d|gunzip|{env_str}python3 -"
+                cmd = f"echo '{b64}'|base64 -d|gunzip|python3 -"
                 print(f"\n{styled('Copy this command:', '1m')}\n\n{cmd}\n")
                 print(styled(f"Size: {len(cmd)} chars, {len(b64)} base64 bytes", '90m'))
-                if any(k in env_str for k in ['API_KEY']): print(styled("⚠ Warning: contains API key(s)!", '93m'))
+                if env_vars and any('API_KEY' in k for k in env_vars): print(styled("⚠ Warning: contains API key(s)!", '93m'))
             commands = {"/add": cmd_add, "/drop": lambda: context_files.discard(arg), "/clear": lambda: (history.clear(), print("History cleared.")), "/undo": lambda: run("git reset --soft HEAD~1"), "/export": cmd_export, "/help": lambda: print("/add <glob> - Add files\n/drop <file> - Remove file\n/clear - Clear history\n/undo - Undo commit\n/export - Export as portable bash command\n/exit - Exit\n!<cmd> - Shell")}
             if command == "/exit": print("Bye!"); title(""); break
             if command in commands: commands[command]()
