@@ -320,11 +320,12 @@ def main():
                 for key in ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL']:
                     if val := os.environ.get(key): env_vars[key] = val
                 if env_vars:
-                    env_setup = 'import os;' + ';'.join(f'os.environ[{k!r}]={v!r}' for k, v in env_vars.items()) + '\n'
+                    env_setup = 'import os;E=os.environ;' + ';'.join(f'E[{k!r}]={v!r}' for k, v in env_vars.items()) + '\n'
                     src = env_setup + src
-                compressed = gzip.compress(src.encode('utf-8'), compresslevel=9)
+                import zlib
+                compressed = zlib.compress(src.encode('utf-8'), 9)
                 b64 = base64.b64encode(compressed).decode('ascii')
-                cmd = f"echo '{b64}'|base64 -d|gunzip|python3 -"
+                cmd = f"python3 -c \"import zlib,base64;exec(zlib.decompress(base64.b64decode('{b64}')))\""
                 print(f"\n{styled('Copy this command:', '1m')}\n\n{cmd}\n")
                 print(styled(f"Size: {len(cmd)} chars, {len(b64)} base64 bytes", '90m'))
                 if env_vars and any('API_KEY' in k for k in env_vars): print(styled("⚠ Warning: contains API key(s)!", '93m'))
