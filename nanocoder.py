@@ -263,7 +263,7 @@ def main():
             def cmd_export():
                 url = "https://raw.githubusercontent.com/koenvaneijk/nanocoder/refs/heads/main/nanocoder.py"
                 env_vars = {}
-                for key in ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL']:
+                for key in ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL']:
                     if val := os.environ.get(key): env_vars[key] = val
                 if not env_vars: print(styled("No API keys found in environment", "31m")); return
                 env_str = " ".join(f'{k}="{v}"' for k, v in env_vars.items())
