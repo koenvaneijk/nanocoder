@@ -267,7 +267,7 @@ def main():
                     if val := os.environ.get(key): env_vars[key] = val
                 if not env_vars: print(styled("No API keys found in environment", "31m")); return
                 env_str = " ".join(f'{k}="{v}"' for k, v in env_vars.items())
-                cmd = f"curl -sS {url} | {env_str} python3 -"
+                cmd = f"curl -sS {url} -o /tmp/nc.py && {env_str} python3 /tmp/nc.py"
                 print(f"\n{styled('Copy this command:', '1m')}\n\n{cmd}\n")
                 print(styled(f"Size: {len(cmd)} chars", '90m'))
                 if any('API_KEY' in k for k in env_vars): print(styled("⚠ Warning: contains API key(s)!", '93m'))
