@@ -344,11 +344,4 @@ def main():
                 request = "Shell results:\n" + "\n\n".join(results) + "\nPlease continue."; continue
             break
 
-if __name__ == "__main__":
-    # If stdin is not a TTY (piped), we can't do interactive input
-    if not sys.stdin.isatty():
-        print(styled("Error: Cannot run interactively when piped. Save the script first:", "31m"))
-        print("  curl -o /tmp/nanocoder.py https://raw.githubusercontent.com/koenvaneijk/nanocoder/refs/heads/main/nanocoder.py")
-        print("  python3 /tmp/nanocoder.py")
-        sys.exit(1)
-    main()
+if __name__ == "__main__": main()
