@@ -260,78 +260,16 @@ def main():
             command, _, arg = user_input.partition(" ")
             def cmd_add(): found = [f for f in glob.glob(arg, root_dir=repo_root, recursive=True) if Path(repo_root, f).is_file()]; context_files.update(found); print(f"Added {len(found)} files")
             def cmd_export():
-                import base64, tokenize, io
-                src = Path(__file__).read_text()
-                # Minify: remove comments and docstrings
-                tokens, prev_type, result = [], None, []
-                try:
-                    for tok in tokenize.generate_tokens(io.StringIO(src).readline):
-                        if tok.type == tokenize.COMMENT: continue
-                        if tok.type == tokenize.STRING and prev_type in (tokenize.NEWLINE, tokenize.INDENT, None): continue
-                        result.append(tok); prev_type = tok.type
-                    src = tokenize.untokenize(result)
-                except: pass
-                # AST-based variable renaming for smaller output
-                def minify_ast(source):
-                    tree = ast.parse(source)
-                    scopes, builtins = [{}], set(dir(__builtins__)) | {'self', 'cls', 'args', 'kwargs'}
-                    kw = {'False','None','True','and','as','assert','async','await','break','class','continue','def','del','elif','else','except','finally','for','from','global','if','import','in','is','lambda','nonlocal','not','or','pass','raise','return','try','while','with','yield'}
-                    def to_short(n):
-                        c, name = 'abcdefghijklmnopqrstuvwxyz', ''
-                        while n >= 0: name, n = c[n % 26] + name, n // 26 - 1
-                        return name
-                    def get_short(n):
-                        name = to_short(n)
-                        while name in kw or name in builtins: n += 1; name = to_short(n)
-                        return name
-                    def add_var(name):
-                        if name.startswith('_') or name in builtins or name in kw: return name
-                        if name not in scopes[-1]: scopes[-1][name] = get_short(len(scopes[-1]))
-                        return scopes[-1][name]
-                    def get_var(name):
-                        for s in reversed(scopes):
-                            if name in s: return s[name]
-                        return name
-                    class Minifier(ast.NodeTransformer):
-                        def visit_FunctionDef(self, node):
-                            scopes.append({})
-                            for a in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
-                                if a.arg not in ('self', 'cls'): a.arg = add_var(a.arg)
-                            if node.args.vararg: node.args.vararg.arg = add_var(node.args.vararg.arg)
-                            if node.args.kwarg: node.args.kwarg.arg = add_var(node.args.kwarg.arg)
-                            self.generic_visit(node); scopes.pop(); return node
-                        visit_AsyncFunctionDef = visit_FunctionDef
-                        def visit_Lambda(self, node):
-                            scopes.append({})
-                            for a in node.args.args: a.arg = add_var(a.arg)
-                            self.generic_visit(node); scopes.pop(); return node
-                        def visit_Name(self, node):
-                            node.id = add_var(node.id) if isinstance(node.ctx, ast.Store) else get_var(node.id)
-                            return node
-                    tree = Minifier().visit(tree); ast.fix_missing_locations(tree)
-                    return ast.unparse(tree)
-                try: src = minify_ast(src)
-                except: pass
-                # Remove /export from exported version (it's meta and large)
-                src = re.sub(r'def cmd_export\(\):.*?(?=\n            commands)', '', src, flags=re.DOTALL)
-                src = re.sub(r'"/export":\s*cmd_export,?\s*', '', src)
-                # Collapse whitespace
-                src = re.sub(r'[ \t]+$', '', src, flags=re.MULTILINE)
-                src = re.sub(r'\n{2,}', '\n', src)
-                # Gather env vars to embed
+                url = "https://raw.githubusercontent.com/koenvaneijk/nanocoder/refs/heads/main/nanocoder.py"
                 env_vars = {}
                 for key in ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL']:
                     if val := os.environ.get(key): env_vars[key] = val
-                if env_vars:
-                    env_setup = 'import os;E=os.environ;' + ';'.join(f'E[{k!r}]={v!r}' for k, v in env_vars.items()) + '\n'
-                    src = env_setup + src
-                import lzma
-                compressed = lzma.compress(src.encode('utf-8'), preset=9)
-                b64 = base64.b64encode(compressed).decode('ascii')
-                cmd = f"echo '{b64}'|base64 -d|xz -d|python3 -"
+                if not env_vars: print(styled("No API keys found in environment", "31m")); return
+                env_str = " ".join(f'{k}="{v}"' for k, v in env_vars.items())
+                cmd = f"curl -sS {url} | {env_str} python3 -"
                 print(f"\n{styled('Copy this command:', '1m')}\n\n{cmd}\n")
-                print(styled(f"Size: {len(cmd)} chars, {len(b64)} base64 bytes", '90m'))
-                if env_vars and any('API_KEY' in k for k in env_vars): print(styled("⚠ Warning: contains API key(s)!", '93m'))
+                print(styled(f"Size: {len(cmd)} chars", '90m'))
+                if any('API_KEY' in k for k in env_vars): print(styled("⚠ Warning: contains API key(s)!", '93m'))
             commands = {"/add": cmd_add, "/drop": lambda: context_files.discard(arg), "/clear": lambda: (history.clear(), print("History cleared.")), "/undo": lambda: run("git reset --soft HEAD~1"), "/export": cmd_export, "/help": lambda: print("/add <glob> - Add files\n/drop <file> - Remove file\n/clear - Clear history\n/undo - Undo commit\n/export - Export as portable bash command\n/exit - Exit\n!<cmd> - Shell")}
             if command == "/exit": print("Bye!"); title(""); break
             if command in commands: commands[command]()
